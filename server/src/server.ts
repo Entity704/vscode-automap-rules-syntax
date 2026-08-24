@@ -23,17 +23,6 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
-const tokenTypesMap = new Map<string, number>([
-    ['comment', 0],
-    ['keyword', 1],
-    ['parameter', 2],
-    ['section', 3],
-    ['constant', 4],
-    ['modifier', 5],
-    ['operator', 6],
-    ['number', 7],
-]);
-
 const keywords = ['Index', 'Pos', 'Random', 'Modulo', 'NoDefaultRule', 'NewRun', 'NoLayerCopy'];
 const parameters = ['INDEX', 'NOTINDEX'];
 const constants = ['FULL', 'EMPTY'];
@@ -42,6 +31,8 @@ const operators = ['OR'];
 
 const tokenTypes = [
     'comment',
+    'class',
+    'namespace',
     'keyword',
     'parameter',
     'type',
@@ -50,7 +41,10 @@ const tokenTypes = [
     'operator',
     'number',
 ];
-const tokenModifiers = ['declaration', 'definition'];
+const tokenModifiers = [
+    'declaration',
+    'definition'
+];
 const legend: SemanticTokensLegend = { tokenTypes, tokenModifiers };
 
 connection.onInitialize((params: InitializeParams) => {
@@ -58,7 +52,7 @@ connection.onInitialize((params: InitializeParams) => {
         capabilities: {
             textDocumentSync: TextDocumentSyncKind.Incremental,
             completionProvider: {
-                triggerCharacters: [' ', '['],
+                triggerCharacters: [' ', '\n'],
             },
             hoverProvider: true,
             semanticTokensProvider: {
@@ -258,13 +252,13 @@ connection.languages.semanticTokens.on((params: SemanticTokensParams): SemanticT
     lines.forEach((line, lineNumber) => {
         const commentIndex = line.indexOf('#');
         if (commentIndex !== -1) {
-            builder.push(lineNumber, commentIndex, line.length - commentIndex, tokenTypesMap.get('comment')!, 0);
+            builder.push(lineNumber, commentIndex, line.length - commentIndex, tokenTypes.indexOf('comment'), 0);
             line = line.substring(0, commentIndex);
         }
 
         const headerMatch = line.match(/^\[.+\]$/);
         if (headerMatch) {
-            builder.push(lineNumber, line.indexOf('['), line.length, tokenTypesMap.get('section')!, 0);
+            builder.push(lineNumber, line.indexOf('['), line.length, tokenTypes.indexOf('class'), 0);
             return;
         }
 
@@ -275,23 +269,26 @@ connection.languages.semanticTokens.on((params: SemanticTokensParams): SemanticT
             const word = match[0];
             const startChar = match.index;
             let tokenType = -1;
+            let modifiersMask = 0;
 
-            if (keywords.includes(word)) {
-                tokenType = tokenTypesMap.get('keyword')!;
+            if (word === 'Index') {
+                tokenType = tokenTypes.indexOf('namespace');
+            } else if (keywords.includes(word)) {
+                tokenType = tokenTypes.indexOf('keyword');
             } else if (parameters.includes(word)) {
-                tokenType = tokenTypesMap.get('parameter')!;
+                tokenType = tokenTypes.indexOf('parameter');
             } else if (constants.includes(word)) {
-                tokenType = tokenTypesMap.get('constant')!;
+                tokenType = tokenTypes.indexOf('type');
             } else if (modifiers.includes(word)) {
-                tokenType = tokenTypesMap.get('modifier')!;
+                tokenType = tokenTypes.indexOf('modifier');
             } else if (operators.includes(word)) {
-                tokenType = tokenTypesMap.get('operator')!;
+                tokenType = tokenTypes.indexOf('operator');
             } else if (/^\d+%?$/.test(word)) {
-                tokenType = tokenTypesMap.get('number')!;
+                tokenType = tokenTypes.indexOf('number');
             }
 
             if (tokenType !== -1) {
-                builder.push(lineNumber, startChar, word.length, tokenType, 0);
+                builder.push(lineNumber, startChar, word.length, tokenType, modifiersMask);
             }
         }
     });
