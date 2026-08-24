@@ -19,19 +19,6 @@
         ],
         "configuration": "./language-configuration.json"
       }
-    ],
-    "grammars": [
-      {
-        "language": "automapper",
-        "scopeName": "source.automapper",
-        "path": "./syntaxes/automapper.tmLanguage.json"
-      }
-    ],
-    "snippets": [
-      {
-        "language": "automapper",
-        "path": "./snippets/automapper.json"
-      }
     ]
   },
   "activationEvents": [
