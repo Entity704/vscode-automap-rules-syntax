@@ -12,7 +12,9 @@
 .vscode/
 node_modules/
 dist/
-out/
+!out
+out/*
+!*.js
 *.tsbuildinfo
 
 # Ignore OS files
