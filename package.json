@@ -27,11 +27,13 @@
   "type": "module",
   "main": "client/out/extension.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "npx tsc -b ./",
+    "build": "npm run compile",
+    "package": "mkdir -p releases && vsce package --out ./releases/$(node -p \"require('./package.json').name + '-' + require('./package.json').version + '.vsix'\")"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "vscode-languageclient": "^10.1.0",
     "vscode-languageserver": "^10.1.0",
@@ -39,6 +41,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "@types/vscode": "^1.134.0"
+    "@types/vscode": "^1.134.0",
+    "typescript": "^7.0.2"
   }
 }

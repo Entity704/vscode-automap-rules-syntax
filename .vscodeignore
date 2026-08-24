@@ -17,6 +17,8 @@ out/*
 !*.js
 *.tsbuildinfo
 
+releases/
+
 # Ignore OS files
 .DS_Store
 Thumbs.db

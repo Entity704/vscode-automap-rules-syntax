@@ -2,7 +2,8 @@
 node_modules/
 jspm_packages/
 
-# TypeScript output
+# Output
+releases/
 dist/
 out/
 *.tsbuildinfo
