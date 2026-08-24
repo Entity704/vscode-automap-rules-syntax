@@ -1,0 +1,57 @@
+{
+  "name": "tws-automapper-syntax",
+  "displayName": "Teeworlds Automapper Syntax",
+  "description": "Syntax highlighting for Teeworlds Automapper .rules files",
+  "version": "0.0.1",
+  "publisher": "Entity",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "automapper",
+        "extensions": [
+          ".rules"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "automapper",
+        "scopeName": "source.automapper",
+        "path": "./syntaxes/automapper.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "automapper",
+        "path": "./snippets/automapper.json"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onLanguage:automapper"
+  ],
+  "type": "module",
+  "main": "client/out/extension.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "vscode-languageclient": "^10.1.0",
+    "vscode-languageserver": "^10.1.0",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/vscode": "^1.134.0"
+  }
+}

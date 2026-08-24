@@ -1,0 +1,20 @@
+# Ignore all files in the root except those explicitly included
+*
+!.vscodeignore
+!package.json
+!tsconfig.json
+!language-configuration.json
+!syntaxes/
+!snippets/
+
+# Ignore development directories
+.git/
+.vscode/
+node_modules/
+dist/
+out/
+*.tsbuildinfo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,77 @@
+{
+  "Index": {
+    "prefix": "Index",
+    "body": "Index",
+    "description": "选择要放置的图块索引，可附加翻转/旋转修饰符。\n\n用法: Index <id> [XFLIP] [YFLIP] [ROTATE]\n\n示例: Index 42 XFLIP YFLIP  (放置索引42且水平+垂直翻转)"
+  },
+  "Pos": {
+    "prefix": "Pos",
+    "body": "Pos",
+    "description": "定义放置条件，检查相对位置的图块状态。\n\n用法: Pos <x> <y> <条件>\n\n条件可为 EMPTY / FULL / INDEX <id> [修饰符] / NOTINDEX <id> [修饰符]\n示例: Pos 0 -1 INDEX 12 OR 13 XFLIP"
+  },
+  "Random": {
+    "prefix": "Random",
+    "body": "Random",
+    "description": "设置随机放置概率。\n用法: Random <数值>%  (百分比)  或  Random <数值> (概率 = 1/数值)\n\n示例: Random 20%  (20%概率)  或 Random 150 (约0.67%概率)"
+  },
+  "Modulo": {
+    "prefix": "Modulo",
+    "body": "Modulo",
+    "description": "基于坐标模运算的重复图案过滤器，满足条件才放置。\n\n用法: Modulo <x_mod> <y_mod> <x_offset> <y_offset>\n\n条件: (x+offsetX) % x_mod == 0 且 (y+offsetY) % y_mod == 0\n\n示例: Modulo 2 3 0 -1"
+  },
+  "NoDefaultRule": {
+    "prefix": "NoDefaultRule",
+    "body": "NoDefaultRule",
+    "description": "禁用当前 Index 规则的默认隐含条件 (Pos 0 0 NOTINDEX 0 或 Pos 0 0 FULL)。\n\n无参数，单独一行。"
+  },
+  "NewRun": {
+    "prefix": "NewRun",
+    "body": "NewRun",
+    "description": "在当前配置中开始新一轮运行，该轮内所有 Index 规则将依次执行。\n\n无参数，单独一行。"
+  },
+  "NoLayerCopy": {
+    "prefix": "NoLayerCopy",
+    "body": "NoLayerCopy",
+    "description": "在当前运行中禁用图层复制（就地修改），可提升性能但需谨慎。\n\n无参数，单独一行。"
+  },
+  "EMPTY": {
+    "prefix": "EMPTY",
+    "body": "EMPTY",
+    "description": "用于 Pos 规则的条件，表示目标位置图块索引为 0。\n\n示例: Pos 0 -1 EMPTY"
+  },
+  "FULL": {
+    "prefix": "FULL",
+    "body": "FULL",
+    "description": "用于 Pos 规则的条件，表示目标位置图块索引不为 0。\n\n示例: Pos 0 -1 FULL"
+  },
+  "INDEX": {
+    "prefix": "INDEX",
+    "body": "INDEX",
+    "description": "用于 Pos 规则的条件，指定需要匹配的图块索引（可带修饰符）。\n\n用法: INDEX <id> [XFLIP] [YFLIP] [ROTATE]  (多个索引用 OR 连接)\n示例: Pos 0 -1 INDEX 12 ROTATE OR 13 XFLIP"
+  },
+  "NOTINDEX": {
+    "prefix": "NOTINDEX",
+    "body": "NOTINDEX",
+    "description": "用于 Pos 规则的条件，排除特定图块索引（可带修饰符）。\n\n用法: NOTINDEX <id> [XFLIP] [YFLIP] [ROTATE]\n示例: Pos 0 -1 NOTINDEX 0  (排除空块，即要求非空)"
+  },
+  "XFLIP": {
+    "prefix": "XFLIP",
+    "body": "XFLIP",
+    "description": "修饰符：垂直翻转图块。\n\n可加在 Index 行或 Pos 条件中的索引后面。"
+  },
+  "YFLIP": {
+    "prefix": "YFLIP",
+    "body": "YFLIP",
+    "description": "修饰符：水平翻转图块。\n\n可加在 Index 行或 Pos 条件中的索引后面。"
+  },
+  "ROTATE": {
+    "prefix": "ROTATE",
+    "body": "ROTATE",
+    "description": "修饰符：将图块顺时针旋转 90°。\n\n可加在 Index 行或 Pos 条件中的索引后面。"
+  },
+  "OR": {
+    "prefix": "OR",
+    "body": "OR",
+    "description": "逻辑“或”，用于在 Index 行或 Pos 条件中组合多个图块索引或条件。\n\n示例: Index 42 OR 43  或  Pos 0 -1 INDEX 12 OR 13"
+  }
+}
