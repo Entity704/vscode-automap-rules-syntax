@@ -252,7 +252,7 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
             kind: CompletionItemKind.Snippet,
             insertTextFormat: InsertTextFormat.Snippet,
             insertText: 'Modulo ${1:x_mod} ${2:y_mod} ${3:x_offset} ${4:y_offset}',
-            detail: '基于坐标模运算的过滤器',
+            detail: '基于坐标模运算的过滤器，在 `(x + x_offset) % x_mod` 与 `(x + y_offset) % y_mod` 都为 0 时放置图块',
             documentation: '用法: Modulo <x_mod> <y_mod> <x_offset> <y_offset>\n示例: Modulo 2 3 0 -1',
         },
         { label: 'Modulo', kind: CompletionItemKind.Keyword, detail: '基于坐标模运算的过滤器' },
