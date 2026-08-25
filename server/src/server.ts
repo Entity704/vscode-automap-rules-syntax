@@ -98,7 +98,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     let hasIndex = false;
 
     lines.forEach((line, lineNumber) => {
-        if (line.length === 0) return;
+        if (line.trim().length === 0) return;
 
         const trimmed = line.trimEnd();
         const startChar = 0;
@@ -218,7 +218,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                     diagnostics.push({
                         severity: DiagnosticSeverity.Warning,
                         range: getTokenRange(lineNumber, trimmed, flagToken),
-                        message: `未知的位置翻转标志 '${flagToken}'`,
+                        message: `未知的翻转标志 '${flagToken}'`,
                         source: 'automapper',
                     });
                 }
@@ -317,7 +317,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                             diagnostics.push({
                                 severity: DiagnosticSeverity.Warning,
                                 range: getTokenRange(lineNumber, trimmed, tok),
-                                message: `Pos 指令中未知的修饰符或操作符 '${tok}'`,
+                                message: `Pos 指令中未知的修饰符或组合符 '${tok}'`,
                                 source: 'automapper',
                             });
                         }
@@ -491,7 +491,7 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
         { label: 'XFLIP', kind: CompletionItemKind.EnumMember, detail: '水平翻转' },
         { label: 'YFLIP', kind: CompletionItemKind.EnumMember, detail: '垂直翻转' },
         { label: 'ROTATE', kind: CompletionItemKind.EnumMember, detail: '顺时针旋转 90°' },
-        { label: 'NONE', kind: CompletionItemKind.EnumMember, detail: '默认方向（精确）' },
+        { label: 'NONE', kind: CompletionItemKind.EnumMember, detail: '无翻转' },
         { label: 'OR', kind: CompletionItemKind.Operator, detail: '逻辑或组合条件' },
         {
             label: 'ROT90',
