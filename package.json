@@ -1,11 +1,12 @@
 {
-  "name": "tws-automapper-syntax",
-  "displayName": "Teeworlds Automapper Syntax",
-  "description": "Syntax highlighting for Teeworlds Automapper .rules files",
-  "version": "0.0.1",
-  "publisher": "Entity",
+  "name": "ddrace-automap-rules-syntax",
+  "displayName": "DDrace Automap Rules Syntax",
+  "description": "Syntax highlighting for DDrace Automapper .rules files",
+  "version": "0.1.0",
+  "publisher": "Entity704",
+  "repository": "Entity704/vscode-automap-rules-syntax",
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.134.0"
   },
   "categories": [
     "Programming Languages"
@@ -21,18 +22,15 @@
       }
     ]
   },
-  "activationEvents": [
-    "onLanguage:automapper"
-  ],
   "type": "module",
   "main": "client/out/extension.js",
   "scripts": {
-    "compile": "npx tsc -b ./",
+    "compile": "node build.js",
     "build": "npm run compile",
     "package": "mkdir -p releases && vsce package --out ./releases/$(node -p \"require('./package.json').name + '-' + require('./package.json').version + '.vsix'\")"
   },
   "keywords": [],
-  "author": "",
+  "author": "Entity704",
   "license": "MIT",
   "dependencies": {
     "vscode-languageclient": "^10.1.0",
@@ -42,6 +40,7 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/vscode": "^1.134.0",
+    "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   }
 }
