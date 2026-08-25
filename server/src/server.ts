@@ -282,6 +282,27 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
         { label: 'YFLIP', kind: CompletionItemKind.EnumMember, detail: '垂直翻转' },
         { label: 'ROTATE', kind: CompletionItemKind.EnumMember, detail: '顺时针旋转 90°' },
         { label: 'OR', kind: CompletionItemKind.Operator, detail: '逻辑或组合条件' },
+        {
+            label: 'ROT90',
+            kind: CompletionItemKind.EnumMember,
+            insertTextFormat: InsertTextFormat.PlainText,
+            insertText: 'ROTATE',
+            detail: '旋转 90 度'
+        },
+        {
+            label: 'ROT180',
+            kind: CompletionItemKind.EnumMember,
+            insertTextFormat: InsertTextFormat.PlainText,
+            insertText: 'XFLIP YFLIP',
+            detail: '旋转 180 度'
+        },
+        {
+            label: 'ROT270',
+            kind: CompletionItemKind.EnumMember,
+            insertTextFormat: InsertTextFormat.PlainText,
+            insertText: 'XFLIP YFLIP ROTATE',
+            detail: '旋转 270 度'
+        }
     ];
 });
 
