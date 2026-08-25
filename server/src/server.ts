@@ -58,9 +58,29 @@ function isIntegerOutsideRange(value: string | undefined, min: bigint, max: bigi
     return integer < min || integer > max;
 }
 
-function getTokenRange(line: number, lineText: string, token: string | undefined) {
+function isValidInteger(value: string | undefined, min: bigint, max: bigint): boolean {
+    return !!value && /^-?\d+$/.test(value) && !isIntegerOutsideRange(value, min, max);
+}
+
+function getTokenRange(line: number, lineText: string, token: string | undefined, tokenIndex?: number) {
     if (!token) return { start: { line, character: 0 }, end: { line, character: lineText.length } };
-    const start = lineText.indexOf(token);
+    let start = -1;
+    if (tokenIndex !== undefined) {
+        const tokenRegex = /\S+/g;
+        let match: RegExpExecArray | null;
+        let currentIndex = 0;
+        while ((match = tokenRegex.exec(lineText)) !== null) {
+            if (currentIndex === tokenIndex) {
+                start = match.index;
+                break;
+            }
+            currentIndex++;
+        }
+    } else {
+        const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = lineText.match(new RegExp(`(?:^|\\s)${escapedToken}(?=\\s|$)`));
+        start = match?.index === undefined ? -1 : match.index + match[0].length - token.length;
+    }
     const safeStart = start >= 0 ? start : 0;
     return {
         start: { line, character: safeStart },
@@ -154,6 +174,14 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         const command = tokens[0] ?? '';
 
         if (command === 'NewRun') {
+            if (tokens.length > 1) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } },
+                    message: 'NewRun 参数过多',
+                    source: 'automapper',
+                });
+            }
             if (!hasConf) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
@@ -169,6 +197,14 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         }
 
         if (command === 'NoLayerCopy') {
+            if (tokens.length > 1) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } },
+                    message: 'NoLayerCopy 参数过多',
+                    source: 'automapper',
+                });
+            }
             if (!hasRun) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
@@ -203,25 +239,54 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                 return;
             }
 
-            if (isIntegerOutsideRange(idToken, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
+            if (!isValidInteger(idToken, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
                 diagnostics.push({
-                    severity: DiagnosticSeverity.Warning,
-                    range: getTokenRange(lineNumber, trimmed, idToken),
-                    message: `无效的索引 '${idToken}'，范围应在 0 到 255 之间`,
+                    severity: DiagnosticSeverity.Error,
+                    range: getTokenRange(lineNumber, trimmed, idToken, 1),
+                    message: `无效的索引 '${idToken}'，必须是 0 到 255 之间的整数`,
                     source: 'automapper',
                 });
             }
 
-            for (let i = 2; i < Math.min(tokens.length, 5); i++) {
-                const flagToken = tokens[i];
+            if (tokens.length > 5) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } },
+                    message: 'Index 参数过多',
+                    source: 'automapper',
+                });
+            }
+
+            const indexModifiers = tokens.slice(2);
+            const seenIndexModifiers = new Set<string>();
+            for (let i = 0; i < Math.min(indexModifiers.length, 3); i++) {
+                const flagToken = indexModifiers[i];
                 if (flagToken && !modifiers.includes(flagToken)) {
                     diagnostics.push({
                         severity: DiagnosticSeverity.Warning,
-                        range: getTokenRange(lineNumber, trimmed, flagToken),
+                        range: getTokenRange(lineNumber, trimmed, flagToken, i + 2),
                         message: `未知的翻转标志 '${flagToken}'`,
                         source: 'automapper',
                     });
+                } else if (flagToken) {
+                    if (seenIndexModifiers.has(flagToken) || (flagToken === 'NONE' && indexModifiers.some((modifier) => modifier !== 'NONE')) || (flagToken !== 'NONE' && indexModifiers.includes('NONE'))) {
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Information,
+                            range: getTokenRange(lineNumber, trimmed, flagToken, i + 2),
+                            message: '令人困惑的标志组合',
+                            source: 'automapper',
+                        });
+                    }
+                    seenIndexModifiers.add(flagToken);
                 }
+            }
+            if (indexModifiers.includes('NONE')) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Information,
+                    range: getTokenRange(lineNumber, trimmed, 'NONE', indexModifiers.indexOf('NONE') + 2),
+                    message: '无用处',
+                    source: 'automapper',
+                });
             }
             return;
         }
@@ -254,7 +319,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             if (!/^-?\d+$/.test(xToken) || isIntegerOutsideRange(xToken, INT32_MIN, INT32_MAX)) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
-                    range: getTokenRange(lineNumber, trimmed, xToken),
+                    range: getTokenRange(lineNumber, trimmed, xToken, 1),
                     message: `Pos X 坐标 '${xToken}' 必须是有效的 32 位整数`,
                     source: 'automapper',
                 });
@@ -263,7 +328,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             if (!/^-?\d+$/.test(yToken) || isIntegerOutsideRange(yToken, INT32_MIN, INT32_MAX)) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
-                    range: getTokenRange(lineNumber, trimmed, yToken),
+                    range: getTokenRange(lineNumber, trimmed, yToken, 2),
                     message: `Pos Y 坐标 '${yToken}' 必须是有效的 32 位整数`,
                     source: 'automapper',
                 });
@@ -273,11 +338,20 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             if (!['EMPTY', 'FULL', 'INDEX', 'NOTINDEX'].includes(upperValue)) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
-                    range: getTokenRange(lineNumber, trimmed, valueToken),
+                    range: getTokenRange(lineNumber, trimmed, valueToken, 3),
                     message: `无效的 Pos 匹配模式 '${valueToken}'，应为 EMPTY、FULL、INDEX 或 NOTINDEX`,
                     source: 'automapper',
                 });
                 return;
+            }
+
+            if ((upperValue === 'EMPTY' || upperValue === 'FULL') && tokens.length > 4) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } },
+                    message: 'Pos 参数过多',
+                    source: 'automapper',
+                });
             }
 
             if (upperValue === 'INDEX' || upperValue === 'NOTINDEX') {
@@ -296,32 +370,73 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                     const idTok = tokens[i];
                     if (!idTok) break;
 
-                    if (isIntegerOutsideRange(idTok, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
+                    if (!isValidInteger(idTok, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
                         diagnostics.push({
-                            severity: DiagnosticSeverity.Warning,
-                            range: getTokenRange(lineNumber, trimmed, idTok),
-                            message: `无效的索引 '${idTok}'，应在 0 到 255 之间`,
+                            severity: DiagnosticSeverity.Error,
+                            range: getTokenRange(lineNumber, trimmed, idTok, i),
+                            message: `无效的索引 '${idTok}'，必须是 0 到 255 之间的整数`,
                             source: 'automapper',
                         });
                     }
 
+                    const idTokenIndex = i;
                     i++;
+                    const groupModifiers: Array<{ value: string; index: number }> = [];
                     while (i < tokens.length) {
                         const tok = tokens[i];
                         if (!tok) break;
                         if (tok === 'OR') {
+                            if (i === tokens.length - 1 || !tokens[i + 1]) {
+                                diagnostics.push({
+                                    severity: DiagnosticSeverity.Error,
+                                    range: getTokenRange(lineNumber, trimmed, tok, i),
+                                    message: 'OR 后缺少索引条件',
+                                    source: 'automapper',
+                                });
+                            }
                             i++;
                             break;
+                        }
+                        if (groupModifiers.length >= 3) {
+                            diagnostics.push({
+                                severity: DiagnosticSeverity.Warning,
+                                range: getTokenRange(lineNumber, trimmed, tok, i),
+                                message: 'Pos 参数过多',
+                                source: 'automapper',
+                            });
                         }
                         if (!['XFLIP', 'YFLIP', 'ROTATE', 'NONE'].includes(tok)) {
                             diagnostics.push({
                                 severity: DiagnosticSeverity.Warning,
-                                range: getTokenRange(lineNumber, trimmed, tok),
+                                range: getTokenRange(lineNumber, trimmed, tok, i),
                                 message: `Pos 指令中未知的修饰符或组合符 '${tok}'`,
                                 source: 'automapper',
                             });
                         }
+                        groupModifiers.push({ value: tok, index: i });
                         i++;
+                    }
+
+                    if (groupModifiers.length === 0) {
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Hint,
+                            range: getTokenRange(lineNumber, trimmed, idTok, idTokenIndex),
+                            message: '将匹配所有翻转状态',
+                            source: 'automapper',
+                        });
+                    }
+
+                    const seenModifiers = new Set<string>();
+                    for (const modifier of groupModifiers) {
+                        if (seenModifiers.has(modifier.value) || (modifier.value === 'NONE' && groupModifiers.some((item) => item.value !== 'NONE')) || (modifier.value !== 'NONE' && groupModifiers.some((item) => item.value === 'NONE'))) {
+                            diagnostics.push({
+                                severity: DiagnosticSeverity.Information,
+                                range: getTokenRange(lineNumber, trimmed, modifier.value, modifier.index),
+                                message: '令人困惑的标志组合',
+                                source: 'automapper',
+                            });
+                        }
+                        seenModifiers.add(modifier.value);
                     }
                 }
             }
@@ -353,8 +468,58 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             if (!/^\d+(\.\d+)?%?$/.test(valStr)) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
-                    range: getTokenRange(lineNumber, trimmed, valStr),
+                    range: getTokenRange(lineNumber, trimmed, valStr, 1),
                     message: `无效的 Random 概率格式 '${valStr}'`,
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            if (tokens.length > 2) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } },
+                    message: 'Random 参数过多',
+                    source: 'automapper',
+                });
+            }
+
+            const randomValue = Number.parseFloat(valStr.endsWith('%') ? valStr.slice(0, -1) : valStr);
+            if (valStr.endsWith('%')) {
+                if (randomValue <= 0) {
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Information,
+                        range: getTokenRange(lineNumber, trimmed, valStr, 1),
+                        message: '不可能',
+                        source: 'automapper',
+                    });
+                } else if (randomValue >= 100) {
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Information,
+                        range: getTokenRange(lineNumber, trimmed, valStr, 1),
+                        message: '始终为真',
+                        source: 'automapper',
+                    });
+                }
+            } else if (randomValue === 0) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: getTokenRange(lineNumber, trimmed, valStr, 1),
+                    message: '除以零，始终为真',
+                    source: 'automapper',
+                });
+            } else if (randomValue < 0) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Information,
+                    range: getTokenRange(lineNumber, trimmed, valStr, 1),
+                    message: '不可能',
+                    source: 'automapper',
+                });
+            } else if (randomValue <= 1) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Information,
+                    range: getTokenRange(lineNumber, trimmed, valStr),
+                    message: '始终为真',
                     source: 'automapper',
                 });
             }
@@ -382,12 +547,21 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                 return;
             }
 
+            if (tokens.length > 5) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } },
+                    message: 'Modulo 参数过多',
+                    source: 'automapper',
+                });
+            }
+
             for (let i = 1; i <= 4; i++) {
                 const param = tokens[i];
-                if (!param || !/^-?\d+$/.test(param)) {
+                if (!isValidInteger(param, INT32_MIN, INT32_MAX)) {
                     diagnostics.push({
                         severity: DiagnosticSeverity.Error,
-                        range: getTokenRange(lineNumber, trimmed, param),
+                        range: getTokenRange(lineNumber, trimmed, param, i),
                         message: `Modulo 参数 ${i} '${param ?? ''}' 必须是整数`,
                         source: 'automapper',
                     });
@@ -406,6 +580,14 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         }
 
         if (command === 'NoDefaultRule') {
+            if (tokens.length > 1) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } },
+                    message: 'NoDefaultRule 参数过多',
+                    source: 'automapper',
+                });
+            }
             if (!hasIndex) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
