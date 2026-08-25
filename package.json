@@ -1,7 +1,7 @@
 {
   "name": "ddrace-automap-rules-syntax",
   "displayName": "DDrace Automap Rules Syntax",
-  "description": "Syntax highlighting for DDrace Automapper .rules files",
+  "description": "Syntax highlighting for DDrace Automap Rules .rules files",
   "version": "0.1.0",
   "publisher": "Entity704",
   "repository": "Entity704/vscode-automap-rules-syntax",

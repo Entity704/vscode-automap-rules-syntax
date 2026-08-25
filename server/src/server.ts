@@ -26,7 +26,7 @@ const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 const keywords = ['Index', 'Pos', 'Random', 'Modulo', 'NoDefaultRule', 'NewRun', 'NoLayerCopy'];
 const parameters = ['INDEX', 'NOTINDEX'];
 const constants = ['FULL', 'EMPTY'];
-const modifiers = ['XFLIP', 'YFLIP', 'ROTATE'];
+const modifiers = ['XFLIP', 'YFLIP', 'ROTATE', 'NONE'];
 const operators = ['OR'];
 
 const tokenTypes = [
@@ -52,10 +52,20 @@ const INT32_MAX = 2147483647n;
 const TILE_INDEX_MIN = 0n;
 const TILE_INDEX_MAX = 255n;
 
-function isIntegerOutsideRange(value: string, min: bigint, max: bigint): boolean {
-    if (!/^-?\d+$/.test(value)) return false;
+function isIntegerOutsideRange(value: string | undefined, min: bigint, max: bigint): boolean {
+    if (!value || !/^-?\d+$/.test(value)) return false;
     const integer = BigInt(value);
     return integer < min || integer > max;
+}
+
+function getTokenRange(line: number, lineText: string, token: string | undefined) {
+    if (!token) return { start: { line, character: 0 }, end: { line, character: lineText.length } };
+    const start = lineText.indexOf(token);
+    const safeStart = start >= 0 ? start : 0;
+    return {
+        start: { line, character: safeStart },
+        end: { line, character: safeStart + token.length },
+    };
 }
 
 connection.onInitialize((params: InitializeParams) => {
@@ -63,7 +73,7 @@ connection.onInitialize((params: InitializeParams) => {
         capabilities: {
             textDocumentSync: TextDocumentSyncKind.Incremental,
             completionProvider: {
-                triggerCharacters: [' ', '\n'],
+                triggerCharacters: [' '],
             },
             hoverProvider: true,
             semanticTokensProvider: {
@@ -83,136 +93,336 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     const lines = text.split(/\r?\n/);
     const diagnostics: Diagnostic[] = [];
 
-    lines.forEach((line, lineNumber) => {
-        const trimmed = line.trim();
-        if (trimmed === '' || trimmed.startsWith('#')) return;
+    let hasConf = false;
+    let hasRun = false;
+    let hasIndex = false;
 
-        const leadingWhitespace = line.match(/^\s+/)?.[0] ?? '';
-        if (leadingWhitespace.includes(' ')) {
+    lines.forEach((line, lineNumber) => {
+        if (line.length === 0) return;
+
+        const trimmed = line.trimEnd();
+        const startChar = 0;
+        const endChar = trimmed.length;
+
+        if (line.trimStart()[0] === '#') return;
+
+        const inlineCommentIndex = line.indexOf('#');
+        if (inlineCommentIndex !== -1) {
             diagnostics.push({
                 severity: DiagnosticSeverity.Warning,
-                range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: leadingWhitespace.length } },
-                message: '行首空格可能导致此行被忽略',
+                range: { start: { line: lineNumber, character: inlineCommentIndex }, end: { line: lineNumber, character: line.length } },
+                message: '行内注释可能导致非预期行为',
                 source: 'automapper',
             });
         }
 
-        const startChar = line.indexOf(trimmed);
-        const endChar = startChar + trimmed.length;
+        const firstChar = line[0] ?? '';
+        if ([' ', '\t', '\v', '\r', '\n'].includes(firstChar)) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: line.length } },
+                message: '行首存在空格或空白字符，此行会被忽略',
+                source: 'automapper',
+            });
+            return;
+        }
 
         if (trimmed.startsWith('[')) {
-            if (!/^\[.+\]$/.test(trimmed)) {
-                diagnostics.push({
-                    severity: DiagnosticSeverity.Error,
-                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
-                    message: '配置头格式应为 [ConfigName]',
-                    source: 'automapper',
-                });
-            }
-            return;
-        }
+            hasConf = true;
+            hasRun = true;
+            hasIndex = false;
 
-        if (trimmed.startsWith('Index')) {
-            const indexValue = trimmed.match(/^Index\s+(-?\d+)/i)?.[1];
-            if (indexValue && isIntegerOutsideRange(indexValue, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
-                const indexStart = startChar + trimmed.indexOf(indexValue);
+            if (!trimmed.endsWith(']')) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Warning,
-                    range: { start: { line: lineNumber, character: indexStart }, end: { line: lineNumber, character: indexStart + indexValue.length } },
-                    message: '无效的索引，应在 0 到 255 之间',
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: '配置头括号未闭合，格式应为 [配置名称]',
                     source: 'automapper',
                 });
-            }
-
-            const indexRegex = /^Index\s+\d+(\s+(XFLIP|YFLIP|ROTATE|NONE)){0,3}$/i;
-            if (!indexRegex.test(trimmed)) {
+            } else if (trimmed.length <= 2) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
                     range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
-                    message: 'Index 格式应为: Index <id> [XFLIP] [YFLIP] [ROTATE]',
+                    message: '配置头名称不能为空',
                     source: 'automapper',
                 });
             }
             return;
         }
 
-        if (trimmed.startsWith('Pos')) {
-            const posTokens = trimmed.split(/\s+/);
-            for (const tokenIndex of [1, 2]) {
-                const coordinate = posTokens[tokenIndex];
-                if (coordinate && isIntegerOutsideRange(coordinate, INT32_MIN, INT32_MAX)) {
-                    const coordinateStart = startChar + trimmed.indexOf(coordinate);
+        const tokens = trimmed.split(/\s+/);
+        const command = tokens[0] ?? '';
+
+        if (command === 'NewRun') {
+            if (!hasConf) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'NewRun 指令必须位于配置块内部',
+                    source: 'automapper',
+                });
+            } else {
+                hasRun = true;
+                hasIndex = false;
+            }
+            return;
+        }
+
+        if (command === 'NoLayerCopy') {
+            if (!hasRun) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'NoLayerCopy 指令必须位于有效的 NewRun 或配置块内部',
+                    source: 'automapper',
+                });
+            }
+            return;
+        }
+
+        if (command === 'Index') {
+            if (!hasRun) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'Index 指令必须位于有效的 NewRun 或配置块内部',
+                    source: 'automapper',
+                });
+                return;
+            }
+            hasIndex = true;
+
+            const idToken = tokens[1];
+            if (!idToken) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: "Index 缺少索引参数，格式: Index i[id] ?s['XFLIP'|'YFLIP'|'ROTATE']",
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            if (isIntegerOutsideRange(idToken, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: getTokenRange(lineNumber, trimmed, idToken),
+                    message: `无效的索引 '${idToken}'，范围应在 0 到 255 之间`,
+                    source: 'automapper',
+                });
+            }
+
+            for (let i = 2; i < Math.min(tokens.length, 5); i++) {
+                const flagToken = tokens[i];
+                if (flagToken && !modifiers.includes(flagToken)) {
                     diagnostics.push({
                         severity: DiagnosticSeverity.Warning,
-                        range: { start: { line: lineNumber, character: coordinateStart }, end: { line: lineNumber, character: coordinateStart + coordinate.length } },
-                        message: 'Pos 坐标超出 int32 范围，可能发生溢出',
+                        range: getTokenRange(lineNumber, trimmed, flagToken),
+                        message: `未知的位置翻转标志 '${flagToken}'`,
+                        source: 'automapper',
+                    });
+                }
+            }
+            return;
+        }
+
+        if (command === 'Pos') {
+            if (!hasIndex) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'Pos 规则必须紧跟在 Index 指令之后声明',
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            const xToken = tokens[1];
+            const yToken = tokens[2];
+            const valueToken = tokens[3];
+
+            if (!xToken || !yToken || !valueToken) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: "Pos 参数不足，格式应为: Pos i[x] i[y] ?s['EMPTY'|'FULL'|'INDEX'|'NOTINDEX']",
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            if (!/^-?\d+$/.test(xToken) || isIntegerOutsideRange(xToken, INT32_MIN, INT32_MAX)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: getTokenRange(lineNumber, trimmed, xToken),
+                    message: `Pos X 坐标 '${xToken}' 必须是有效的 32 位整数`,
+                    source: 'automapper',
+                });
+            }
+
+            if (!/^-?\d+$/.test(yToken) || isIntegerOutsideRange(yToken, INT32_MIN, INT32_MAX)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: getTokenRange(lineNumber, trimmed, yToken),
+                    message: `Pos Y 坐标 '${yToken}' 必须是有效的 32 位整数`,
+                    source: 'automapper',
+                });
+            }
+
+            const upperValue = valueToken.toUpperCase();
+            if (!['EMPTY', 'FULL', 'INDEX', 'NOTINDEX'].includes(upperValue)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: getTokenRange(lineNumber, trimmed, valueToken),
+                    message: `无效的 Pos 匹配模式 '${valueToken}'，应为 EMPTY、FULL、INDEX 或 NOTINDEX`,
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            if (upperValue === 'INDEX' || upperValue === 'NOTINDEX') {
+                if (tokens.length < 5) {
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Error,
+                        range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                        message: `Pos ${upperValue} 模式缺失具体的索引参数`,
+                        source: 'automapper',
+                    });
+                    return;
+                }
+
+                let i = 4;
+                while (i < tokens.length) {
+                    const idTok = tokens[i];
+                    if (!idTok) break;
+
+                    if (isIntegerOutsideRange(idTok, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Warning,
+                            range: getTokenRange(lineNumber, trimmed, idTok),
+                            message: `无效的索引 '${idTok}'，应在 0 到 255 之间`,
+                            source: 'automapper',
+                        });
+                    }
+
+                    i++;
+                    while (i < tokens.length) {
+                        const tok = tokens[i];
+                        if (!tok) break;
+                        if (tok === 'OR') {
+                            i++;
+                            break;
+                        }
+                        if (!['XFLIP', 'YFLIP', 'ROTATE', 'NONE'].includes(tok)) {
+                            diagnostics.push({
+                                severity: DiagnosticSeverity.Warning,
+                                range: getTokenRange(lineNumber, trimmed, tok),
+                                message: `Pos 指令中未知的修饰符或操作符 '${tok}'`,
+                                source: 'automapper',
+                            });
+                        }
+                        i++;
+                    }
+                }
+            }
+            return;
+        }
+
+        if (command === 'Random') {
+            if (!hasIndex) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'Random 规则必须位于 Index 指令之后',
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            const valStr = tokens[1];
+            if (!valStr) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'Random 缺少数值参数，格式: Random f[value] 或 Random f[value]%',
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            if (!/^\d+(\.\d+)?%?$/.test(valStr)) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: getTokenRange(lineNumber, trimmed, valStr),
+                    message: `无效的 Random 概率格式 '${valStr}'`,
+                    source: 'automapper',
+                });
+            }
+            return;
+        }
+
+        if (command === 'Modulo') {
+            if (!hasIndex) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'Modulo 规则必须位于 Index 指令之后',
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            if (tokens.length < 5) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+                    message: 'Modulo 参数不足，格式: Modulo i[modX] i[modY] i[offsetX] i[offsetY]',
+                    source: 'automapper',
+                });
+                return;
+            }
+
+            for (let i = 1; i <= 4; i++) {
+                const param = tokens[i];
+                if (!param || !/^-?\d+$/.test(param)) {
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Error,
+                        range: getTokenRange(lineNumber, trimmed, param),
+                        message: `Modulo 参数 ${i} '${param ?? ''}' 必须是整数`,
                         source: 'automapper',
                     });
                 }
             }
 
-            if (posTokens[3]?.toUpperCase() === 'INDEX' || posTokens[3]?.toUpperCase() === 'NOTINDEX') {
-                let indexSearchStart = trimmed.indexOf(posTokens[3]) + (posTokens[3]?.length ?? 0);
-                for (const token of posTokens.slice(4)) {
-                    const indexStartInTrimmed = trimmed.indexOf(token, indexSearchStart);
-                    indexSearchStart = indexStartInTrimmed + token.length;
-                    if (isIntegerOutsideRange(token, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
-                        const indexStart = startChar + indexStartInTrimmed;
-                        diagnostics.push({
-                            severity: DiagnosticSeverity.Warning,
-                            range: { start: { line: lineNumber, character: indexStart }, end: { line: lineNumber, character: indexStart + token.length } },
-                            message: '无效的索引，应在 0 到 255 之间',
-                            source: 'automapper',
-                        });
-                    }
-                }
-            }
-
-            const posRegex = /^Pos\s+-?\d+\s+-?\d+\s+(EMPTY|FULL|(INDEX|NOTINDEX)(\s+.*)?)$/i;
-            if (!posRegex.test(trimmed)) {
+            if (tokens[1] === '0' || tokens[2] === '0') {
                 diagnostics.push({
-                    severity: DiagnosticSeverity.Error,
+                    severity: DiagnosticSeverity.Warning,
                     range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
-                    message: 'Pos 格式应为: Pos <x> <y> <EMPTY|FULL|INDEX|NOTINDEX> [id] [flags]',
+                    message: 'Modulo 的 modX 或 modY 为 0 时，将被自动重置为 1',
                     source: 'automapper',
                 });
             }
             return;
         }
 
-        if (trimmed.startsWith('Random')) {
-            if (!/^Random\s+\d+(\.\d+)?%?$/i.test(trimmed)) {
+        if (command === 'NoDefaultRule') {
+            if (!hasIndex) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
                     range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
-                    message: 'Random 格式应为: Random <value> 或 Random <value>%',
+                    message: 'NoDefaultRule 指令必须位于 Index 指令之后',
                     source: 'automapper',
                 });
             }
             return;
         }
 
-        if (trimmed.startsWith('Modulo')) {
-            if (!/^Modulo\s+\d+\s+\d+\s+-?\d+\s+-?\d+$/i.test(trimmed)) {
-                diagnostics.push({
-                    severity: DiagnosticSeverity.Error,
-                    range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
-                    message: 'Modulo 格式应为: Modulo <modX> <modY> <offsetX> <offsetY>',
-                    source: 'automapper',
-                });
-            }
-            return;
-        }
-
-        const validKeywords = ['NewRun', 'NoDefaultRule', 'NoLayerCopy'];
-        if (!validKeywords.includes(trimmed) && !trimmed.startsWith('Index') && !trimmed.startsWith('Pos') && !trimmed.startsWith('Random') && !trimmed.startsWith('Modulo')) {
-            diagnostics.push({
-                severity: DiagnosticSeverity.Warning,
-                range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
-                message: `意外的语法: '${trimmed}'`,
-                source: 'automapper',
-            });
-        }
+        diagnostics.push({
+            severity: DiagnosticSeverity.Warning,
+            range: { start: { line: lineNumber, character: startChar }, end: { line: lineNumber, character: endChar } },
+            message: `无法解析的语法或指令: '${trimmed}'`,
+            source: 'automapper',
+        });
     });
 
     connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
@@ -226,7 +436,7 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
             insertTextFormat: InsertTextFormat.Snippet,
             insertText: 'Index ${1:id}${2| , XFLIP, YFLIP, ROTATE|}',
             detail: '选择要放置的图块索引',
-            documentation: '用法: Index <id> [XFLIP|YFLIP|ROTATE]\n示例: Index 42 XFLIP YFLIP',
+            documentation: "用法: Index i[id] ?s['XFLIP'|'YFLIP'|'ROTATE']\n示例: Index 42 XFLIP YFLIP",
         },
         { label: 'Index', kind: CompletionItemKind.Keyword, detail: '选择要放置的图块索引' },
         {
@@ -235,7 +445,7 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
             insertTextFormat: InsertTextFormat.Snippet,
             insertText: 'Pos ${1:x} ${2:y} ${3|EMPTY,FULL,INDEX ,NOTINDEX |}',
             detail: '定义放置条件，检查相对位置状态',
-            documentation: '用法: Pos <x> <y> <EMPTY|FULL|INDEX|NOTINDEX>',
+            documentation: "用法: Pos i[x] i[y] s['EMPTY'|'FULL'|'INDEX'|'NOTINDEX']",
         },
         { label: 'Pos', kind: CompletionItemKind.Keyword, detail: '定义放置条件，检查相对位置状态' },
         {
@@ -244,23 +454,23 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
             insertTextFormat: InsertTextFormat.Snippet,
             insertText: 'Random ${1:value}',
             detail: '设置随机放置概率',
-            documentation: '用法: Random <数值>% 或 Random <分母>\n示例: Random 20%',
+            documentation: '用法: Random f[value]% 或 Random f[value]\n非百分数时概率为 1 / value。\n示例: Random 20%',
         },
         { label: 'Random', kind: CompletionItemKind.Keyword, detail: '设置随机放置概率' },
         {
             label: 'Modulo',
             kind: CompletionItemKind.Snippet,
             insertTextFormat: InsertTextFormat.Snippet,
-            insertText: 'Modulo ${1:x_mod} ${2:y_mod} ${3:x_offset} ${4:y_offset}',
-            detail: '基于坐标模运算的过滤器，在 `(x + x_offset) % x_mod` 与 `(x + y_offset) % y_mod` 都为 0 时放置图块',
-            documentation: '用法: Modulo <x_mod> <y_mod> <x_offset> <y_offset>\n示例: Modulo 2 3 0 -1',
+            insertText: 'Modulo ${1:modX} ${2:modY} ${3:offsetX} ${4:offsetY}',
+            detail: '基于坐标模运算的过滤器',
+            documentation: '在 `(x + offsetX) % modX` 与 `(y + offsetY) % modY` 都为 0 时放置图块。\n用法: Modulo i[modX] i[modY] i[offsetX] i[offsetY]\n示例: Modulo 2 3 0 -1',
         },
         { label: 'Modulo', kind: CompletionItemKind.Keyword, detail: '基于坐标模运算的过滤器' },
         {
             label: 'NoDefaultRule',
             kind: CompletionItemKind.Keyword,
-            detail: '禁用默认隐含条件（Pos 0 0 NOTINDEX 0）',
-            documentation: '禁用当前 Index 规则的默认隐含条件。',
+            detail: '禁用默认隐含条件',
+            documentation: '禁用当前 Index 规则的默认隐含条件（`Pos 0 0 NOTINDEX 0`）。',
         },
         {
             label: 'NewRun',
@@ -281,27 +491,28 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
         { label: 'XFLIP', kind: CompletionItemKind.EnumMember, detail: '水平翻转' },
         { label: 'YFLIP', kind: CompletionItemKind.EnumMember, detail: '垂直翻转' },
         { label: 'ROTATE', kind: CompletionItemKind.EnumMember, detail: '顺时针旋转 90°' },
+        { label: 'NONE', kind: CompletionItemKind.EnumMember, detail: '默认方向（精确）' },
         { label: 'OR', kind: CompletionItemKind.Operator, detail: '逻辑或组合条件' },
         {
             label: 'ROT90',
             kind: CompletionItemKind.EnumMember,
             insertTextFormat: InsertTextFormat.PlainText,
             insertText: 'ROTATE',
-            detail: '旋转 90 度'
+            detail: '顺时针旋转 90° 标识'
         },
         {
             label: 'ROT180',
             kind: CompletionItemKind.EnumMember,
             insertTextFormat: InsertTextFormat.PlainText,
             insertText: 'XFLIP YFLIP',
-            detail: '旋转 180 度'
+            detail: '顺时针旋转 180° 标识'
         },
         {
             label: 'ROT270',
             kind: CompletionItemKind.EnumMember,
             insertTextFormat: InsertTextFormat.PlainText,
             insertText: 'XFLIP YFLIP ROTATE',
-            detail: '旋转 270 度'
+            detail: '顺时针旋转 270° 标识'
         }
     ];
 });
