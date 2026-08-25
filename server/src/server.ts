@@ -47,6 +47,17 @@ const tokenModifiers = [
 ];
 const legend: SemanticTokensLegend = { tokenTypes, tokenModifiers };
 
+const INT32_MIN = -2147483648n;
+const INT32_MAX = 2147483647n;
+const TILE_INDEX_MIN = 0n;
+const TILE_INDEX_MAX = 255n;
+
+function isIntegerOutsideRange(value: string, min: bigint, max: bigint): boolean {
+    if (!/^-?\d+$/.test(value)) return false;
+    const integer = BigInt(value);
+    return integer < min || integer > max;
+}
+
 connection.onInitialize((params: InitializeParams) => {
     return {
         capabilities: {
@@ -76,6 +87,16 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         const trimmed = line.trim();
         if (trimmed === '' || trimmed.startsWith('#')) return;
 
+        const leadingWhitespace = line.match(/^\s+/)?.[0] ?? '';
+        if (leadingWhitespace.includes(' ')) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: leadingWhitespace.length } },
+                message: '行首空格可能导致此行被忽略',
+                source: 'automapper',
+            });
+        }
+
         const startChar = line.indexOf(trimmed);
         const endChar = startChar + trimmed.length;
 
@@ -92,6 +113,17 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         }
 
         if (trimmed.startsWith('Index')) {
+            const indexValue = trimmed.match(/^Index\s+(-?\d+)/i)?.[1];
+            if (indexValue && isIntegerOutsideRange(indexValue, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
+                const indexStart = startChar + trimmed.indexOf(indexValue);
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: lineNumber, character: indexStart }, end: { line: lineNumber, character: indexStart + indexValue.length } },
+                    message: '无效的索引，应在 0 到 255 之间',
+                    source: 'automapper',
+                });
+            }
+
             const indexRegex = /^Index\s+\d+(\s+(XFLIP|YFLIP|ROTATE|NONE)){0,3}$/i;
             if (!indexRegex.test(trimmed)) {
                 diagnostics.push({
@@ -105,6 +137,37 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         }
 
         if (trimmed.startsWith('Pos')) {
+            const posTokens = trimmed.split(/\s+/);
+            for (const tokenIndex of [1, 2]) {
+                const coordinate = posTokens[tokenIndex];
+                if (coordinate && isIntegerOutsideRange(coordinate, INT32_MIN, INT32_MAX)) {
+                    const coordinateStart = startChar + trimmed.indexOf(coordinate);
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Warning,
+                        range: { start: { line: lineNumber, character: coordinateStart }, end: { line: lineNumber, character: coordinateStart + coordinate.length } },
+                        message: 'Pos 坐标超出 int32 范围，可能发生溢出',
+                        source: 'automapper',
+                    });
+                }
+            }
+
+            if (posTokens[3]?.toUpperCase() === 'INDEX' || posTokens[3]?.toUpperCase() === 'NOTINDEX') {
+                let indexSearchStart = trimmed.indexOf(posTokens[3]) + (posTokens[3]?.length ?? 0);
+                for (const token of posTokens.slice(4)) {
+                    const indexStartInTrimmed = trimmed.indexOf(token, indexSearchStart);
+                    indexSearchStart = indexStartInTrimmed + token.length;
+                    if (isIntegerOutsideRange(token, TILE_INDEX_MIN, TILE_INDEX_MAX)) {
+                        const indexStart = startChar + indexStartInTrimmed;
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Warning,
+                            range: { start: { line: lineNumber, character: indexStart }, end: { line: lineNumber, character: indexStart + token.length } },
+                            message: '无效的索引，应在 0 到 255 之间',
+                            source: 'automapper',
+                        });
+                    }
+                }
+            }
+
             const posRegex = /^Pos\s+-?\d+\s+-?\d+\s+(EMPTY|FULL|(INDEX|NOTINDEX)(\s+.*)?)$/i;
             if (!posRegex.test(trimmed)) {
                 diagnostics.push({
