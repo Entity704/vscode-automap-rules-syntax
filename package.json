@@ -27,7 +27,8 @@
   "scripts": {
     "compile": "node build.js",
     "build": "npm run compile",
-    "package": "mkdir -p releases && vsce package --out ./releases/$(node -p \"require('./package.json').name + '-' + require('./package.json').version + '.vsix'\")"
+    "package": "mkdir -p releases && vsce package --out ./releases/$(node -p \"require('./package.json').name + '-' + require('./package.json').version + '.vsix'\")",
+    "build-pack": "npm run build && npm run package"
   },
   "keywords": [],
   "author": "Entity704",
