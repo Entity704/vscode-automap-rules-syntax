@@ -7,6 +7,7 @@ import { getTokenRange, isIntegerOutsideRange, isValidInteger } from './validati
 export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
     const lines = textDocument.getText().split(/\r?\n/);
     const diagnostics: Diagnostic[] = [];
+    const posCoordinates = new Set<string>();
     let hasConf = false;
     let hasRun = false;
     let hasIndex = false;
@@ -57,6 +58,7 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
         if (command === 'Index') {
             if (!hasRun) { add(lineNumber, 'Index 指令必须位于有效的 NewRun 或配置块内部', DiagnosticSeverity.Error); return; }
             hasIndex = true;
+            posCoordinates.clear();
             const idToken = tokens[1];
             if (!idToken) { add(lineNumber, "Index 缺少索引参数，格式: Index i[id] ?s['XFLIP'|'YFLIP'|'ROTATE']", DiagnosticSeverity.Error); return; }
             if (!isValidInteger(idToken, TILE_INDEX_MIN, TILE_INDEX_MAX)) add(lineNumber, `无效的索引 '${idToken}'，必须是 0 到 255 之间的整数`, DiagnosticSeverity.Error, idToken, 1);
@@ -81,6 +83,9 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
             if (!xToken || !yToken || !valueToken) { add(lineNumber, "Pos 参数不足，格式应为: Pos i[x] i[y] ?s['EMPTY'|'FULL'|'INDEX'|'NOTINDEX']", DiagnosticSeverity.Error); return; }
             if (!/^-?\d+$/.test(xToken) || isIntegerOutsideRange(xToken, INT32_MIN, INT32_MAX)) add(lineNumber, `Pos X 坐标 '${xToken}' 必须是有效的 32 位整数`, DiagnosticSeverity.Error, xToken, 1);
             if (!/^-?\d+$/.test(yToken) || isIntegerOutsideRange(yToken, INT32_MIN, INT32_MAX)) add(lineNumber, `Pos Y 坐标 '${yToken}' 必须是有效的 32 位整数`, DiagnosticSeverity.Error, yToken, 2);
+            const coordKey = `${xToken},${yToken}`;
+            if (posCoordinates.has(coordKey)) add(lineNumber, '重复的 Pos 规则坐标', DiagnosticSeverity.Information);
+            else posCoordinates.add(coordKey);
             const upperValue = valueToken.toUpperCase();
             if (!['EMPTY', 'FULL', 'INDEX', 'NOTINDEX'].includes(upperValue)) { add(lineNumber, `无效的 Pos 匹配模式 '${valueToken}'，应为 EMPTY、FULL、INDEX 或 NOTINDEX`, DiagnosticSeverity.Error, valueToken, 3); return; }
             if ((upperValue === 'EMPTY' || upperValue === 'FULL') && tokens.length > 4) add(lineNumber, 'Pos 参数过多', DiagnosticSeverity.Warning);
