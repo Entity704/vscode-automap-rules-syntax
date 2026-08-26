@@ -7,7 +7,8 @@ import { getTokenRange, isIntegerOutsideRange, isValidInteger } from './validati
 export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
     const lines = textDocument.getText().split(/\r?\n/);
     const diagnostics: Diagnostic[] = [];
-    const posCoordinates = new Set<string>();
+    const posCoordinates = new Map<string, { line: number, range: any, hasWarned: boolean }>();
+    let hasRandom: { line: number, range: any, hasWarned: boolean } | false = false;
     let hasConf = false;
     let hasRun = false;
     let hasIndex = false;
@@ -37,7 +38,7 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
             return;
         }
         if (trimmed.startsWith('[')) {
-            hasConf = true; hasRun = true; hasIndex = false;
+            hasConf = true; hasRun = true; hasIndex = false; hasRandom = false;
             if (!trimmed.endsWith(']')) add(lineNumber, '配置头括号未闭合，格式应为 [配置名称]', DiagnosticSeverity.Warning);
             else if (trimmed.length <= 2) add(lineNumber, '配置头名称不能为空', DiagnosticSeverity.Error);
             return;
@@ -47,7 +48,7 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
         if (command === 'NewRun') {
             if (tokens.length > 1) add(lineNumber, 'NewRun 参数过多', DiagnosticSeverity.Warning);
             if (!hasConf) add(lineNumber, 'NewRun 指令必须位于配置块内部', DiagnosticSeverity.Error);
-            else { hasRun = true; hasIndex = false; }
+            else { hasRun = true; hasIndex = false; hasRandom = false; }
             return;
         }
         if (command === 'NoLayerCopy') {
@@ -58,6 +59,7 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
         if (command === 'Index') {
             if (!hasRun) { add(lineNumber, 'Index 指令必须位于有效的 NewRun 或配置块内部', DiagnosticSeverity.Error); return; }
             hasIndex = true;
+            hasRandom = false;
             posCoordinates.clear();
             const idToken = tokens[1];
             if (!idToken) { add(lineNumber, "Index 缺少索引参数，格式: Index i[id] ?s['XFLIP'|'YFLIP'|'ROTATE']", DiagnosticSeverity.Error); return; }
@@ -84,8 +86,16 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
             if (!/^-?\d+$/.test(xToken) || isIntegerOutsideRange(xToken, INT32_MIN, INT32_MAX)) add(lineNumber, `Pos X 坐标 '${xToken}' 必须是有效的 32 位整数`, DiagnosticSeverity.Error, xToken, 1);
             if (!/^-?\d+$/.test(yToken) || isIntegerOutsideRange(yToken, INT32_MIN, INT32_MAX)) add(lineNumber, `Pos Y 坐标 '${yToken}' 必须是有效的 32 位整数`, DiagnosticSeverity.Error, yToken, 2);
             const coordKey = `${xToken},${yToken}`;
-            if (posCoordinates.has(coordKey)) add(lineNumber, '重复的 Pos 规则坐标', DiagnosticSeverity.Information);
-            else posCoordinates.add(coordKey);
+            if (posCoordinates.has(coordKey)) {
+                const first = posCoordinates.get(coordKey)!;
+                if (!first.hasWarned) {
+                    diagnostics.push({ severity: DiagnosticSeverity.Warning, range: first.range, message: '重复的 Pos 规则坐标', source: 'automapper' });
+                    first.hasWarned = true;
+                }
+                add(lineNumber, '重复的 Pos 规则坐标', DiagnosticSeverity.Warning);
+            } else {
+                posCoordinates.set(coordKey, { line: lineNumber, range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } }, hasWarned: false });
+            }
             const upperValue = valueToken.toUpperCase();
             if (!['EMPTY', 'FULL', 'INDEX', 'NOTINDEX'].includes(upperValue)) { add(lineNumber, `无效的 Pos 匹配模式 '${valueToken}'，应为 EMPTY、FULL、INDEX 或 NOTINDEX`, DiagnosticSeverity.Error, valueToken, 3); return; }
             if ((upperValue === 'EMPTY' || upperValue === 'FULL') && tokens.length > 4) add(lineNumber, 'Pos 参数过多', DiagnosticSeverity.Warning);
@@ -115,6 +125,14 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
         }
         if (command === 'Random') {
             if (!hasIndex) { add(lineNumber, 'Random 规则必须位于 Index 指令之后', DiagnosticSeverity.Error); return; }
+            if (hasRandom) {
+                if (!hasRandom.hasWarned) {
+                    diagnostics.push({ severity: DiagnosticSeverity.Information, range: hasRandom.range, message: '重复的 Random 规则，仅最后一个生效', source: 'automapper' });
+                    hasRandom.hasWarned = true;
+                }
+                add(lineNumber, '重复的 Random 规则，仅最后一个生效', DiagnosticSeverity.Information);
+            }
+            hasRandom = { line: lineNumber, range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } }, hasWarned: false };
             const val = tokens[1];
             if (!val) { add(lineNumber, 'Random 缺少数值参数，格式: Random f[value] 或 Random f[value]%', DiagnosticSeverity.Error); return; }
             if (!/^\d+(\.\d+)?%?$/.test(val)) { add(lineNumber, `无效的 Random 概率格式 '${val}'`, DiagnosticSeverity.Error, val, 1); return; }
