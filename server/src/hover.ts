@@ -88,16 +88,22 @@ function describeIndex(lines: string[], lineNumber: number): string | null {
     const modifiers = tokens.slice(2).map((token) => modifierNames[token] ?? token);
     const target = modifiers.length > 0 ? `索引为 ${escapeMarkdown(tokens[1])} 且 ${modifiers.join(' 与 ')}` : `索引为 ${escapeMarkdown(tokens[1])}`;
     const conditions: string[] = [];
+    let hasNoDefaultRule = false;
     for (let i = lineNumber + 1; i < lines.length; i++) {
         const line = lines[i]?.trim() ?? '';
         if (isCommand(line)) {
             if (line.startsWith('Pos')) {
                 const condition = describePos(line);
                 if (condition) conditions.push(condition);
+            } else if (line.startsWith('NoDefaultRule')) {
+                hasNoDefaultRule = true;
             } else if (!['NoDefaultRule', 'NoLayerCopy'].includes(line.split(/\s+/)[0]!)) {
                 break;
             }
         }
+    }
+    if (!hasNoDefaultRule) {
+        conditions.push('*若当前图块索引不为 0（默认规则）*');
     }
     if (conditions.length === 0) return `若下列条件成立，则放置 ${target} 的图块`;
     return [`若下列条件成立，则放置 ${target} 的图块`, ...conditions.map((condition) => `- ${condition}`)].join('\n');
