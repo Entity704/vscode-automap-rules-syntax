@@ -1,6 +1,153 @@
 import type { Hover, TextDocumentPositionParams } from 'vscode-languageserver/node';
 import type { TextDocuments } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
+import { deflateSync } from 'node:zlib';
+
+const modifierNames: Record<string, string> = {
+    XFLIP: '水平翻转',
+    YFLIP: '垂直翻转',
+    ROTATE: '旋转',
+    NONE: '不翻转',
+};
+
+function escapeMarkdown(value: string): string {
+    return value.replace(/[\\`*_{}[\]()#+.!|<>-]/g, '\\$&');
+}
+
+function crc32(data: Uint8Array): number {
+    let crc = 0xffffffff;
+    for (const byte of data) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit++) {
+            crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+        }
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+    const typeBytes = Buffer.from(type, 'ascii');
+    const chunk = Buffer.alloc(12 + data.length);
+    chunk.writeUInt32BE(data.length, 0);
+    typeBytes.copy(chunk, 4);
+    Buffer.from(data).copy(chunk, 8);
+    chunk.writeUInt32BE(crc32(Buffer.concat([typeBytes, Buffer.from(data)])), 8 + data.length);
+    return chunk;
+}
+
+function imageMarkdown(label: string, png: Uint8Array): string {
+    const dataUri = `data:image/png;base64,${Buffer.from(png).toString('base64')}`;
+    return `![${label}](${dataUri})`;
+}
+
+function describeIndexCondition(tokens: string[]): string {
+    const index = tokens[0] ?? '';
+    const indexDescription = index === 'FULL'
+        ? '索引不为 0'
+        : index === 'EMPTY'
+            ? '索引为 0'
+            : index === 'INDEX'
+                ? `索引为 ${tokens[1] ?? '指定值'}`
+                : index === 'NOTINDEX'
+                    ? `索引不为 ${tokens[1] ?? '指定值'}`
+                    : `索引为 ${index}`;
+    const modifierStart = index === 'INDEX' || index === 'NOTINDEX' ? 2 : 1;
+    const modifiers = tokens.slice(modifierStart).map((token) => modifierNames[token] ?? token);
+    return modifiers.length > 0 ? `${indexDescription} 且 ${modifiers.join(' 与 ')}` : indexDescription;
+}
+
+function describePos(line: string): string | null {
+    const tokens = line.trim().split(/\s+/);
+    if (tokens[0] !== 'Pos' || tokens.length < 4) return null;
+
+    const x = escapeMarkdown(tokens[1] ?? '');
+    const y = escapeMarkdown(tokens[2] ?? '');
+    const groups: string[] = [];
+    let group: string[] = [];
+    for (const token of tokens.slice(3)) {
+        if (token === 'OR') {
+            if (group.length > 0) groups.push(describeIndexCondition(group));
+            group = [];
+        } else {
+            group.push(token);
+        }
+    }
+    if (group.length > 0) groups.push(describeIndexCondition(group));
+    if (groups.length === 0) return null;
+    return `若偏移 (${x}, ${y}) 处的图块 ${groups.join(' 或 ')}`;
+}
+
+function isCommand(line: string): boolean {
+    return /^(?:Index|Pos|Random|Modulo|NoDefaultRule|NewRun|NoLayerCopy|\[)/.test(line.trim());
+}
+
+function describeIndex(lines: string[], lineNumber: number): string | null {
+    const tokens = lines[lineNumber]?.trim().split(/\s+/) ?? [];
+    if (tokens[0] !== 'Index' || !tokens[1]) return null;
+
+    const modifiers = tokens.slice(2).map((token) => modifierNames[token] ?? token);
+    const target = modifiers.length > 0 ? `索引为 ${escapeMarkdown(tokens[1])} 且 ${modifiers.join(' 与 ')}` : `索引为 ${escapeMarkdown(tokens[1])}`;
+    const conditions: string[] = [];
+    for (let i = lineNumber + 1; i < lines.length; i++) {
+        const line = lines[i]?.trim() ?? '';
+        if (isCommand(line)) {
+            if (line.startsWith('Pos')) {
+                const condition = describePos(line);
+                if (condition) conditions.push(condition);
+            } else if (!['NoDefaultRule', 'NoLayerCopy'].includes(line.split(/\s+/)[0]!)) {
+                break;
+            }
+        }
+    }
+    if (conditions.length === 0) return `若下列条件成立，则放置 ${target} 的图块`;
+    return [`若下列条件成立，则放置 ${target} 的图块`, ...conditions.map((condition) => `- ${condition}`)].join('\n');
+}
+
+function createModuloImage(modX: number, modY: number, offsetX: number, offsetY: number): Uint8Array {
+    const x = ((-offsetX % modX) + modX) % modX;
+    const y = ((-offsetY % modY) + modY) % modY;
+    return createPixelImage((pixelX, pixelY) => pixelX % modX === x && pixelY % modY === y);
+}
+
+function createPixelImage(pixelAt: (x: number, y: number) => boolean): Uint8Array {
+    const rows: number[] = [];
+    for (let y = 0; y < 64; y++) {
+        rows.push(0);
+        for (let byteIndex = 0; byteIndex < 8; byteIndex++) {
+            let byte = 0;
+            for (let bit = 0; bit < 8; bit++) {
+                if (pixelAt(byteIndex * 8 + bit, y)) byte |= 1 << (7 - bit);
+            }
+            rows.push(byte);
+        }
+    }
+
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(64, 0);
+    header.writeUInt32BE(64, 4);
+    header[8] = 1;
+    header[9] = 3;
+    header[10] = 0;
+    header[11] = 0;
+    header[12] = 0;
+    const palette = Buffer.from([0x44, 0x44, 0x44, 0xee, 0xee, 0xee]);
+    return Buffer.concat([
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        pngChunk('IHDR', header),
+        pngChunk('PLTE', palette),
+        pngChunk('IDAT', deflateSync(Buffer.from(rows))),
+        pngChunk('IEND', new Uint8Array()),
+    ]);
+}
+
+function createRandomImage(probability: number): Uint8Array {
+    const clampedProbability = Math.max(0, Math.min(1, probability));
+    return createPixelImage((x, y) => {
+        const seed = Math.imul(x + 1, 374761393) ^ Math.imul(y + 1, 668265263);
+        const random = (Math.imul(seed ^ (seed >>> 13), 1274126177) >>> 0) / 0x100000000;
+        return random < clampedProbability;
+    });
+}
 
 export function provideHover(params: TextDocumentPositionParams, documents: TextDocuments<TextDocument>): Hover | null {
     const document = documents.get(params.textDocument.uri);
@@ -11,8 +158,28 @@ export function provideHover(params: TextDocumentPositionParams, documents: Text
     if (!rawLine) return null;
 
     const line = rawLine.trim();
-    if (line.startsWith('Index')) return { contents: { kind: 'markdown', value: '**Index 指令**\n用于定义匹配成功后输出的目标 Tile ID 及属性。' } };
-    if (line.startsWith('Pos')) return { contents: { kind: 'markdown', value: '**Pos 指令**\n定义相对位置 `(x, y)` 的图块条件。' } };
-    if (line.startsWith('Modulo')) return { contents: { kind: 'markdown', value: '**Modulo 指令**\n基于坐标的周期取模逻辑约束。' } };
+    if (line.startsWith('Index')) {
+        const description = describeIndex(lines, params.position.line);
+        return description ? { contents: { kind: 'markdown', value: description } } : null;
+    }
+    if (line.startsWith('Pos')) {
+        const description = describePos(line);
+        return description ? { contents: { kind: 'markdown', value: description } } : null;
+    }
+    if (line.startsWith('Modulo')) {
+        const tokens = line.split(/\s+/).slice(1).map(Number);
+        if (tokens.length < 4 || tokens.some((value) => !Number.isInteger(value))) return null;
+        const [modX, modY, offsetX, offsetY] = tokens;
+        if (modX === undefined || modY === undefined || offsetX === undefined || offsetY === undefined || modX === 0 || modY === 0) return null;
+        return { contents: { kind: 'markdown', value: imageMarkdown('Modulo pattern', createModuloImage(modX, modY, offsetX, offsetY)) } };
+    }
+    if (line.startsWith('Random')) {
+        const value = line.split(/\s+/)[1];
+        if (!value || !/^\d+(\.\d+)?%?$/.test(value)) return null;
+        const number = Number.parseFloat(value);
+        const probability = value.endsWith('%') ? number / 100 : 1 / number;
+        if (!Number.isFinite(probability)) return null;
+        return { contents: { kind: 'markdown', value: imageMarkdown('Random pattern', createRandomImage(Math.max(0, Math.min(1, probability)))) } };
+    }
     return null;
 }
