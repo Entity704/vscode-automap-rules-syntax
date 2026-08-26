@@ -1,25 +1,14 @@
-*
+**/*
 
-!.vscodeignore
 !package.json
 !language-configuration.json
 !syntaxes/
 !snippets/
 
-!README.md
-!LICENSE
+!images/
+!README*
+!readme*
+!LICENSE*
+!license*
 
-!client/out/*.js
-!client/out/*.js.map
-!server/out/*.js
-!server/out/*.js.map
-
-.git/
-.vscode/
-node_modules/
-dist/
-src/
-tsconfig*.json
-*.tsbuildinfo
-.DS_Store
-Thumbs.db
+!**/out/**/*
