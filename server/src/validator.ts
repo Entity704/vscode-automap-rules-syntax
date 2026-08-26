@@ -2,7 +2,7 @@ import type { Diagnostic } from 'vscode-languageserver/node';
 import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { INT32_MAX, INT32_MIN, TILE_INDEX_MAX, TILE_INDEX_MIN, modifiers } from './constants.js';
-import { getTokenRange, isIntegerOutsideRange, isValidInteger } from './validation-helpers.js';
+import { getTokenRange, isIntegerOutsideRange, isValidInteger } from './helpers.js';
 
 export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
     const lines = textDocument.getText().split(/\r?\n/);
