@@ -35,21 +35,30 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                 }
 
-                for (let i = 0; i < startLines.length - 1; i++) {
-                    const start = startLines[i];
-                    const nextStart = startLines[i + 1];
-                    if (nextStart !== undefined) {
-                        const end = nextStart - 1;
-                        if (start !== undefined && end > start) {
-                            ranges.push(new vscode.FoldingRange(start, end, vscode.FoldingRangeKind.Region));
+                function findLastNonEmpty(start: number, limit: number): number {
+                    for (let i = limit; i >= start; i--) {
+                        if (document.lineAt(i).text.trim() !== '') {
+                            return i;
                         }
+                    }
+                    return start;
+                }
+
+                for (let i = 0; i < startLines.length - 1; i++) {
+                    const start = startLines[i]!;
+                    const nextStart = startLines[i + 1]!;
+
+                    const end = findLastNonEmpty(start, nextStart - 1);
+                    if (end > start) {
+                        ranges.push(new vscode.FoldingRange(start, end, vscode.FoldingRangeKind.Region));
                     }
                 }
 
                 if (startLines.length > 0) {
-                    const lastStart = startLines[startLines.length - 1];
-                    if (lastStart !== undefined && lastStart < lineCount - 1) {
-                        ranges.push(new vscode.FoldingRange(lastStart, lineCount - 1, vscode.FoldingRangeKind.Region));
+                    const lastStart = startLines[startLines.length - 1]!;
+                    const end = findLastNonEmpty(lastStart, lineCount - 1);
+                    if (end > lastStart) {
+                        ranges.push(new vscode.FoldingRange(lastStart, end, vscode.FoldingRangeKind.Region));
                     }
                 }
 
