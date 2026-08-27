@@ -18,6 +18,7 @@ import { validateTextDocument } from './validator.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
+let randomSeed = 0;
 
 connection.onInitialize((_params: InitializeParams) => {
     return {
@@ -41,7 +42,11 @@ documents.onDidChangeContent((change) => {
 });
 
 connection.onCompletion(() => provideCompletions());
-connection.onHover((params: TextDocumentPositionParams) => provideHover(params, documents));
+connection.onHover((params: TextDocumentPositionParams) => provideHover(params, documents, randomSeed));
+connection.onNotification('automapper/setSeed', (seed: unknown) => {
+    if (typeof seed === 'number' && Number.isInteger(seed) && seed >= 0 && seed <= 1000000000)
+        randomSeed = seed;
+});
 connection.languages.semanticTokens.on((params: SemanticTokensParams) => provideSemanticTokens(params, documents));
 
 documents.listen(connection);

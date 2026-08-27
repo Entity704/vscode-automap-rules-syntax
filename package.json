@@ -31,11 +31,24 @@
         }
       ]
     },
+    "configuration": {
+      "title": "DDrace Automap Rules",
+      "properties": {
+        "automapper.randomSeed": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "用于预览 Random 规则的随机种子"
+        }
+      }
+    },
     "views": {
       "automapper-controls": [
         {
           "id": "automapper-configurations",
           "name": "Configurations",
+          "type": "webview",
           "icon": "",
           "visibility": "visible"
         },

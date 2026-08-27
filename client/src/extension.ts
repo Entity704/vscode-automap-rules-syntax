@@ -5,6 +5,69 @@ import type { LanguageClientOptions, ServerOptions } from 'vscode-languageclient
 
 let client: LanguageClient;
 
+const randomSeedKey = 'automapper.randomSeed';
+const maxRandomSeed = 1_000_000_000;
+
+class ConfigurationsViewProvider implements vscode.WebviewViewProvider {
+    constructor(private readonly context: vscode.ExtensionContext) {}
+
+    resolveWebviewView(webviewView: vscode.WebviewView) {
+        webviewView.webview.options = { enableScripts: true };
+        webviewView.webview.html = this.getHtml(webviewView.webview);
+
+        const configuration = vscode.workspace.getConfiguration();
+        const sendSeed = (seed: number) => client.sendNotification('automapper/setSeed', seed);
+        webviewView.webview.onDidReceiveMessage(async (message: { type?: string, value?: unknown }) => {
+            if (message.type !== 'setSeed' || typeof message.value !== 'string' && typeof message.value !== 'number') return;
+            const seed = Number(message.value);
+            if (!Number.isInteger(seed) || seed < 0 || seed > maxRandomSeed) return;
+            await configuration.update(randomSeedKey, seed, vscode.ConfigurationTarget.Global);
+            sendSeed(seed);
+        }, undefined, this.context.subscriptions);
+
+        const updateView = () => {
+            const seed = vscode.workspace.getConfiguration().get<number>(randomSeedKey, 0);
+            webviewView.webview.postMessage({ type: 'setSeed', value: seed });
+            sendSeed(seed);
+        };
+        const configurationSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration(randomSeedKey)) updateView();
+        });
+        this.context.subscriptions.push(configurationSubscription);
+        updateView();
+    }
+
+    private getHtml(webview: vscode.Webview): string {
+        const nonce = getNonce();
+        return `<!DOCTYPE html>
+<html>
+<body>
+    <label for="seed">Seed: </label>
+    <input id="seed" type="number" min="0" max="${maxRandomSeed}" step="1" value="0" />
+
+    <script nonce="${nonce}">
+        const vscode = acquireVsCodeApi();
+        const input = document.getElementById('seed');
+        input.addEventListener('change', () => {
+            const value = Number(input.value);
+            if (Number.isInteger(value) && value >= 0 && value <= ${maxRandomSeed}) {
+                vscode.postMessage({ type: 'setSeed', value });
+            }
+        });
+        window.addEventListener('message', event => {
+            if (event.data.type === 'setSeed') input.value = event.data.value;
+        });
+    </script>
+</body>
+</html>`;
+    }
+}
+
+function getNonce(): string {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    return Array.from({ length: 32 }, () => characters[Math.floor(Math.random() * characters.length)]).join('');
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const serverModule = context.asAbsolutePath(path.join('server', 'out', 'server.js'));
 
@@ -19,6 +82,15 @@ export function activate(context: vscode.ExtensionContext) {
 
     client = new LanguageClient('automapperServer', 'Automapper Language Server', serverOptions, clientOptions);
     client.start();
+    const sendConfiguredSeed = () => {
+        const seed = vscode.workspace.getConfiguration().get<number>(randomSeedKey, 0);
+        client.sendNotification('automapper/setSeed', seed);
+    };
+    sendConfiguredSeed();
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration(randomSeedKey)) sendConfiguredSeed();
+    }));
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('automapper-configurations', new ConfigurationsViewProvider(context)));
 
     const foldingRangeProvider = vscode.languages.registerFoldingRangeProvider(
         { scheme: 'file' },

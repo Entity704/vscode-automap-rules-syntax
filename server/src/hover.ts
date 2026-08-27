@@ -2,6 +2,7 @@ import type { Hover, TextDocumentPositionParams } from 'vscode-languageserver/no
 import type { TextDocuments } from 'vscode-languageserver/node';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { deflateSync } from 'node:zlib';
+import { hashLocation } from './helpers.js';
 
 const modifierNames: Record<string, string> = {
     XFLIP: '水平翻转',
@@ -146,16 +147,36 @@ function createPixelImage(pixelAt: (x: number, y: number) => boolean): Uint8Arra
     ]);
 }
 
-function createRandomImage(probability: number): Uint8Array {
+function createRandomImage(seed: number, run: number, rule: number, probability: number): Uint8Array {
     const clampedProbability = Math.max(0, Math.min(1, probability));
     return createPixelImage((x, y) => {
-        const seed = Math.imul(x + 1, 374761393) ^ Math.imul(y + 1, 668265263);
-        const random = (Math.imul(seed ^ (seed >>> 13), 1274126177) >>> 0) / 0x100000000;
-        return random < clampedProbability;
+        return hashLocation(seed, run, rule, x, y) < 65536 * clampedProbability;
     });
 }
 
-export function provideHover(params: TextDocumentPositionParams, documents: TextDocuments<TextDocument>): Hover | null {
+function getRunAndRule(lines: string[], lineNumber: number): { run: number, rule: number } {
+    let run = 0;
+    let rule = 0;
+    let inConfiguration = false;
+    for (let i = 0; i <= lineNumber; i++) {
+        const command = lines[i]?.trim().split(/\s+/)[0] ?? '';
+        if (command.startsWith('[')) {
+            run = 0;
+            rule = 0;
+            inConfiguration = true;
+        } else if (!inConfiguration) {
+            continue;
+        } else if (command === 'NewRun') {
+            run++;
+            rule = 0;
+        } else if (command === 'Index') {
+            rule++;
+        }
+    }
+    return { run, rule: Math.max(0, rule - 1) };
+}
+
+export function provideHover(params: TextDocumentPositionParams, documents: TextDocuments<TextDocument>, randomSeed = 0): Hover | null {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
 
@@ -185,7 +206,8 @@ export function provideHover(params: TextDocumentPositionParams, documents: Text
         const number = Number.parseFloat(value);
         const probability = value.endsWith('%') ? number / 100 : 1 / number;
         if (!Number.isFinite(probability)) return null;
-        return { contents: { kind: 'markdown', value: imageMarkdown('Random pattern', createRandomImage(Math.max(0, Math.min(1, probability)))) } };
+        const { run, rule } = getRunAndRule(lines, params.position.line);
+        return { contents: { kind: 'markdown', value: imageMarkdown('Random pattern', createRandomImage(randomSeed, run, rule, Math.max(0, Math.min(1, probability)))) } };
     }
     return null;
 }
