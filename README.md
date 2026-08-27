@@ -38,5 +38,5 @@ Or build and package in one go:
 npm run build-pack
 ```
 
-The VSIX files are in the `releases` directory
+The VSIX files are in the `releases` directory  
 VSIX 安装包在 `releases` 目录
