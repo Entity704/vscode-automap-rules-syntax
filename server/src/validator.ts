@@ -89,10 +89,10 @@ export function validateTextDocument(textDocument: TextDocument): Diagnostic[] {
             if (posCoordinates.has(coordKey)) {
                 const first = posCoordinates.get(coordKey)!;
                 if (!first.hasWarned) {
-                    diagnostics.push({ severity: DiagnosticSeverity.Warning, range: first.range, message: '重复的 Pos 规则坐标', source: 'automapper' });
+                    diagnostics.push({ severity: DiagnosticSeverity.Hint, range: first.range, message: '重复的 Pos 规则坐标', source: 'automapper' });
                     first.hasWarned = true;
                 }
-                add(lineNumber, '重复的 Pos 规则坐标', DiagnosticSeverity.Warning);
+                add(lineNumber, '重复的 Pos 规则坐标', DiagnosticSeverity.Hint);
             } else {
                 posCoordinates.set(coordKey, { line: lineNumber, range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: trimmed.length } }, hasWarned: false });
             }
