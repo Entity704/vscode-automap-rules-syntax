@@ -1,5 +1,16 @@
 Copyright © 2026 Entity (entity@outlook.com)
 
+SCOPE OF THIS LICENSE:
+This MIT license applies strictly to the source code written by the author(s) of this project.
+
+For GRAPHICAL ASSETS (images, sprites, textures) in this project:
+- Original artwork created by this project's author is dedicated to the public domain under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+- Third-party assets are described in the NOTICE file.
+
+Please refer to the NOTICE file for full copyright attributions and license details of third-party components.
+
+---
+
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.

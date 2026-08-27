@@ -10,7 +10,7 @@ A VSCode extension pack that provides code highlighting and completion for DDrac
 
 ## Things to pay attention to / 须注意的内容
 
-- [License / 许可证（MIT）](./LICENSE)
+- [License / 许可证](./LICENSE)
 - [NOTICE](./NOTICE)
 
 # For developers
