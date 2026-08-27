@@ -1,0 +1,17 @@
+This project includes third-party software components with their own copyright notices and license terms:
+
+- TypeScript (https://www.typescriptlang.org/)
+  Copyright (c) Microsoft Corporation.
+  Licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+
+- vscode-languageclient, vscode-languageserver, vscode-languageserver-textdocument
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License (https://opensource.org/licenses/MIT).
+
+- @types/node, @types/vscode
+  Copyright (c) Microsoft Corporation and other contributors.
+  Licensed under the MIT License.
+
+- esbuild (https://esbuild.github.io/)
+  Copyright (c) Evan Wallace.
+  Licensed under the MIT License.
