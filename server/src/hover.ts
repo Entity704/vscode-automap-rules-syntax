@@ -225,6 +225,11 @@ export function provideHover(params: TextDocumentPositionParams, documents: Text
         if (!description) return null;
         const { run, rule } = getRunAndRule(lines, params.position.line);
         const preview = getIndexPreview(lines, params.position.line);
+
+        if (preview.moduloRules.length === 0 && preview.probability === 1) {
+            return { contents: { kind: 'markdown', value: description } };
+        }
+
         const image = imageMarkdown('Index pattern', createIndexImage(randomSeed, run, rule, preview.moduloRules, preview.probability));
         return { contents: { kind: 'markdown', value: `${description}\n\n${image}` } };
     }
