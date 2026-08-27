@@ -21,7 +21,32 @@
         ],
         "configuration": "./language-configuration.json"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "automapper-controls",
+          "title": "Automapper Controls",
+          "icon": "images/icon_generic.svg"
+        }
+      ]
+    },
+    "views": {
+      "automapper-controls": [
+        {
+          "id": "automapper-configurations",
+          "name": "Configurations",
+          "icon": "",
+          "visibility": "visible"
+        },
+        {
+          "id": "automapper-rules",
+          "name": "Rules",
+          "icon": "",
+          "visibility": "visible"
+        }
+      ]
+    }
   },
   "type": "module",
   "main": "client/out/extension.js",
