@@ -36,7 +36,7 @@ export function getTokenRange(line: number, lineText: string, token: string | un
 
 const HASH_MAX = 65536;
 
-export function HashUint32(num: number): number {
+export function hashUint32(num: number): number {
     let n = BigInt(num) & 0xFFFFFFFFn;
     n = (n + 1n) & 0xFFFFFFFFn;
     n = (n ^ (n >> 17n)) & 0xFFFFFFFFn;
@@ -49,16 +49,16 @@ export function HashUint32(num: number): number {
     return Number(n);
 }
 
-export function HashLocation(seed: number, run: number, rule: number, x: number, y: number): number {
+export function hashLocation(seed: number, run: number, rule: number, x: number, y: number): number {
     const prime = 31n;
     let hash = 1n;
 
-    hash = (hash * prime + BigInt(HashUint32(seed))) & 0xFFFFFFFFn;
-    hash = (hash * prime + BigInt(HashUint32(run))) & 0xFFFFFFFFn;
-    hash = (hash * prime + BigInt(HashUint32(rule))) & 0xFFFFFFFFn;
-    hash = (hash * prime + BigInt(HashUint32(x))) & 0xFFFFFFFFn;
-    hash = (hash * prime + BigInt(HashUint32(y))) & 0xFFFFFFFFn;
+    hash = (hash * prime + BigInt(hashUint32(seed))) & 0xFFFFFFFFn;
+    hash = (hash * prime + BigInt(hashUint32(run))) & 0xFFFFFFFFn;
+    hash = (hash * prime + BigInt(hashUint32(rule))) & 0xFFFFFFFFn;
+    hash = (hash * prime + BigInt(hashUint32(x))) & 0xFFFFFFFFn;
+    hash = (hash * prime + BigInt(hashUint32(y))) & 0xFFFFFFFFn;
 
-    const finalHash = HashUint32(Number((hash * prime) & 0xFFFFFFFFn));
+    const finalHash = hashUint32(Number((hash * prime) & 0xFFFFFFFFn));
     return finalHash % HASH_MAX;
 }
