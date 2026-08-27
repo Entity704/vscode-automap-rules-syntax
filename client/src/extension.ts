@@ -42,6 +42,16 @@ class ConfigurationsViewProvider implements vscode.WebviewViewProvider {
         return `<!DOCTYPE html>
 <html>
 <body>
+    <style>
+        input {
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 4px;
+            color-scheme: dark;
+        }
+    </style>
+
     <label for="seed">Seed: </label>
     <input id="seed" type="number" min="0" max="${maxRandomSeed}" step="1" value="0" />
 
