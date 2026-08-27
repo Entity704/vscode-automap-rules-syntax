@@ -98,7 +98,7 @@ function describeIndex(lines: string[], lineNumber: number): string | null {
                 if (condition) conditions.push(condition);
             } else if (line.startsWith('NoDefaultRule')) {
                 hasNoDefaultRule = true;
-            } else if (!['NoDefaultRule', 'NoLayerCopy'].includes(line.split(/\s+/)[0]!)) {
+            } else if (!['NoDefaultRule', 'NoLayerCopy', 'Modulo', 'Random'].includes(line.split(/\s+/)[0]!)) {
                 break;
             }
         }
@@ -108,6 +108,33 @@ function describeIndex(lines: string[], lineNumber: number): string | null {
     }
     if (conditions.length === 0) return `若下列条件成立，则放置 ${target} 的图块`;
     return [`若下列条件成立，则放置 ${target} 的图块`, ...conditions.map((condition) => `- ${condition}`)].join('\n');
+}
+
+function getIndexPreview(lines: string[], lineNumber: number): { moduloRules: Array<[number, number, number, number]>, probability: number } {
+    const moduloRules: Array<[number, number, number, number]> = [];
+    let probability = 1;
+    for (let i = lineNumber + 1; i < lines.length; i++) {
+        const tokens = lines[i]?.trim().split(/\s+/) ?? [];
+        const command = tokens[0] ?? '';
+        if (command === 'Index' || command === 'NewRun' || command.startsWith('[')) break;
+        if (command === 'Modulo' && tokens.length >= 5) {
+            const values = tokens.slice(1, 5).map(Number);
+            if (values.every(Number.isInteger)) {
+                const [modX, modY, offsetX, offsetY] = values;
+                if (modX !== undefined && modY !== undefined && offsetX !== undefined && offsetY !== undefined) {
+                    moduloRules.push([modX || 1, modY || 1, offsetX, offsetY]);
+                }
+            }
+        } else if (command === 'Random') {
+            const value = tokens[1];
+            if (value && /^\d+(\.\d+)?%?$/.test(value)) {
+                const number = Number.parseFloat(value);
+                const nextProbability = value.endsWith('%') ? number / 100 : 1 / number;
+                if (Number.isFinite(nextProbability)) probability = nextProbability;
+            }
+        }
+    }
+    return { moduloRules, probability: Math.max(0, Math.min(1, probability)) };
 }
 
 function createModuloImage(modX: number, modY: number, offsetX: number, offsetY: number): Uint8Array {
@@ -154,6 +181,14 @@ function createRandomImage(seed: number, run: number, rule: number, probability:
     });
 }
 
+function createIndexImage(seed: number, run: number, rule: number, moduloRules: Array<[number, number, number, number]>, probability: number): Uint8Array {
+    return createPixelImage((x, y) => {
+        const passesModulo = moduloRules.length === 0 || moduloRules.some(([modX, modY, offsetX, offsetY]) =>
+            (x + offsetX) % modX === 0 && (y + offsetY) % modY === 0);
+        return passesModulo && hashLocation(seed, run, rule, x, y) < 65536 * probability;
+    });
+}
+
 function getRunAndRule(lines: string[], lineNumber: number): { run: number, rule: number } {
     let run = 0;
     let rule = 0;
@@ -187,7 +222,11 @@ export function provideHover(params: TextDocumentPositionParams, documents: Text
     const line = rawLine.trim();
     if (line.startsWith('Index')) {
         const description = describeIndex(lines, params.position.line);
-        return description ? { contents: { kind: 'markdown', value: description } } : null;
+        if (!description) return null;
+        const { run, rule } = getRunAndRule(lines, params.position.line);
+        const preview = getIndexPreview(lines, params.position.line);
+        const image = imageMarkdown('Index pattern', createIndexImage(randomSeed, run, rule, preview.moduloRules, preview.probability));
+        return { contents: { kind: 'markdown', value: `${description}\n\n${image}` } };
     }
     if (line.startsWith('Pos')) {
         const description = describePos(line);
